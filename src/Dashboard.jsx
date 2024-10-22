@@ -1,9 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import styled, { keyframes } from 'styled-components';
 import axios from 'axios';
-import { FiFilter } from 'react-icons/fi';
 import { FaCheckCircle, FaTimesCircle, FaMinusCircle } from 'react-icons/fa';
 import { GiHamburgerMenu } from 'react-icons/gi';
+
+import { AgGridReact } from "ag-grid-react"; // React Data Grid Component
+import "ag-grid-community/styles/ag-grid.css"; // Mandatory CSS required by the Data Grid
+import "ag-grid-community/styles/ag-theme-quartz.css"; // Optional Theme applied to the Data Grid
+import "./assets/App.css";
+import statusRenderer from './helper/statusRenderer';
 
 const AppBar = styled.div`
     background-color: #ffffff;
@@ -31,40 +36,32 @@ const HamburgerIcon = styled(GiHamburgerMenu)`
 
 const DashboardContainer = styled.div`
     padding: 20px;
-    display: grid;
-    grid-template-rows: auto 1fr;
-    grid-template-columns: 2fr 1fr;
     gap: 20px;
     width: 100%;
     height: calc(100vh - 70px);
 `;
 
-const Title = styled.h1`
+const Title = styled.h3`
     color: #333;
     margin-bottom: 20px;
 `;
 
 const TableContainer = styled.div`
     width: 100%;
-    height: 100%;
     overflow: auto;
     background-color: #fff;
-    padding: 20px;
+    padding: 0 20px 20px 20px;
     border-radius: 8px;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-    grid-row: 1;
-    grid-column: 1;
 `;
 
 const AgentsContainer = styled.div`
+    display: grid;
     background-color: #fff;
-    padding: 20px;
+    padding: 0 20px 20px 20px;
     border-radius: 8px;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-    height: 100%;
     overflow: auto;
-    grid-row: 1;
-    grid-column: 2;
 `;
 
 const SearchContainer = styled.div`
@@ -131,6 +128,7 @@ const HighlightedRow = styled(TableRow)`
 
 const StatusBar = styled.div`
     margin-bottom: 20px;
+    width: 80%
 `;
 
 const StatusOverview = styled.div`
@@ -169,46 +167,57 @@ const StatusIconWrapper = styled.div`
 `;
 
 const Dashboard = () => {
-    const [users, setUsers] = useState([]);
     const [agents, setAgents] = useState([]);
-    const [updatedUserIds, setUpdatedUserIds] = useState([]);
-    const [changedCells, setChangedCells] = useState({});
     const [searchTerm, setSearchTerm] = useState('');
+    const gridRef = useRef(null);
+
+    // Workgroup Dashboard
+    const [rowDataWorkgroup, setRowDataWorkgroup] = useState([]);
+    const defaultColDefWorkgroup = useMemo(() => {
+        return {
+            flex: 1,
+            filter: true,
+        };
+    });
+    const [colDefsWorkgroup, setColDefsWorkgroup] = useState([
+        { field: "last_name", headerName: "LAST NAME" },
+        { field: "first_name", headerName: "FIRST NAME" },
+        { field: "extension", headerName: "EXTENSION" },
+        { field: "title", headerName: "TITLE" },
+        { field: "status", headerName: "STATUS", cellRenderer: statusRenderer, enableCellChangeFlash: true},
+        { field: "logged_on", headerName: "LOGGED ON", enableCellChangeFlash: true },
+        { field: "time_in_status", headerName: "TIME IN STATUS", enableCellChangeFlash: true, cellRenderer: "agAnimateShowChangeCellRenderer" },
+        { field: "additional_field", headerName: "ADDITIONAL FIELD" },
+        { field: "resource_number", headerName: "RESOURCE NUMBER" },
+    ]);
+    const gridOptionsWorkgroup = {
+        getRowId: (params) => params.data.id.toString(),
+    };
+
+    //Agent Status Dashboard
+    const [rowDataAgents, setRowDataAgents] = useState([]);
+    const defaultColDefAgents = useMemo(() => {
+        return {
+            flex: 1,
+            filter: true,
+        };
+    });
+    const [colDefsAgents, setColDefsAgents] = useState([
+        { field: "workgroup", headerName: "WORKGROUP" },
+        { field: "longest_time_waiting", headerName: "LONGEST TIME WAITING" },
+        { field: "agents_available", headerName: "AGENTS AVAILABLE" },
+        { field: "interactions_waiting", headerName: "INTERACTIONS WAITING" },
+        { field: "current_shift_service_level_target", headerName: "CURRENT SHIFT SERVICE LEVEL TARGET"},
+        { field: "current_shift_interactions", headerName: "CURRENT SHIFT INTERACTIONS" },
+        { field: "department", headerName: "DEPARTMENT" },
+    ]);
 
     useEffect(() => {
         const fetchUsers = async () => {
             try {
-                const response = await axios.get('http://localhost:3001/api/items/');
+                const response = await axios.get('http://ec2-3-138-200-194.us-east-2.compute.amazonaws.com:8000/api/items/');
                 const updatedUsers = response.data;
-                const updatedIds = updatedUsers.map(user => user.id);
-
-                setUsers(prevUsers => {
-                    const prevUserMap = new Map(prevUsers.map(user => [user.id, user]));
-                    const newUserMap = new Map(updatedUsers.map(user => [user.id, user]));
-
-                    const changes = [];
-                    const updatedCells = {};
-                    newUserMap.forEach((newUser, id) => {
-                        if (!prevUserMap.has(id) || JSON.stringify(prevUserMap.get(id)) !== JSON.stringify(newUser)) {
-                            changes.push(id);
-                            const prevUser = prevUserMap.get(id);
-                            if (prevUser) {
-                                Object.keys(newUser).forEach(key => {
-                                    if (newUser[key] !== prevUser[key]) {
-                                        if (!updatedCells[id]) {
-                                            updatedCells[id] = [];
-                                        }
-                                        updatedCells[id].push(key);
-                                    }
-                                });
-                            }
-                        }
-                    });
-
-                    setUpdatedUserIds(changes);
-                    setChangedCells(updatedCells);
-                    return updatedUsers;
-                });
+                setRowDataWorkgroup(updatedUsers);
             } catch (error) {
                 console.error('Error fetching users:', error);
             }
@@ -216,8 +225,9 @@ const Dashboard = () => {
 
         const fetchAgents = async () => {
             try {
-                const response = await axios.get('http://localhost:3001/api/statistics/');
+                const response = await axios.get('http://ec2-3-138-200-194.us-east-2.compute.amazonaws.com:8000/api/statistics/');
                 setAgents(response.data);
+                setRowDataAgents(response.data);
             } catch (error) {
                 console.error('Error fetching agents:', error);
             }
@@ -225,18 +235,39 @@ const Dashboard = () => {
 
         fetchUsers();
         fetchAgents();
+
         const interval = setInterval(() => {
-            fetchUsers();
+            fetchUsersInAnInterval();
             fetchAgents();
         }, 5000);
         return () => clearInterval(interval);
     }, []);
 
-    const filteredUsers = users.filter(user =>
-        user.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.department.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const fetchUsersInAnInterval = async () => {
+        try {
+            const response = await axios.get('http://ec2-3-138-200-194.us-east-2.compute.amazonaws.com:8000/api/items/');
+            const updatedUsers = response.data;
+
+            // Update the grid with new data
+            const gridApi = gridRef.current.api;
+            gridApi.applyTransactionAsync({ update: updatedUsers });
+        } catch (error) {
+            console.error('Error fetching users:', error);
+        }
+    }
+
+    const onGridReady = useCallback((params) => {
+        axios.get("http://ec2-3-138-200-194.us-east-2.compute.amazonaws.com:8000/api/items/")
+            .then((response) => setRowDataWorkgroup(response.data));
+    }, []);
+
+    const onFilterTextBoxChanged = useCallback(() => {
+        gridRef.current.api.setGridOption(
+            "quickFilterText",
+            document.getElementById("filter-text-box").value,
+        );
+    }, []);
+
 
     const filteredAgents = agents.filter(agent =>
         agent.workgroup.toLowerCase().includes(searchTerm.toLowerCase())
@@ -264,44 +295,24 @@ const Dashboard = () => {
                     <SearchContainer>
                         <SearchInput
                             type="text"
-                            placeholder="Search workgroups..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
+                            id="filter-text-box"
+                            placeholder="Search Dashboard"
+                            onInput={onFilterTextBoxChanged}
                         />
-                        <FilterButton onClick={() => alert('Filter options will be implemented soon!')}>
-                            <FiFilter />
-                        </FilterButton>
                     </SearchContainer>
-                    <Table>
-                        <thead>
-                        <tr>
-                            <TableHeader>Last Name</TableHeader>
-                            <TableHeader>First Name</TableHeader>
-                            <TableHeader>Extension</TableHeader>
-                            <TableHeader>Department</TableHeader>
-                            <TableHeader>Title</TableHeader>
-                            <TableHeader>Status</TableHeader>
-                            <TableHeader>Logged On</TableHeader>
-                            <TableHeader>Time in Status</TableHeader>
-                            <TableHeader>Activated</TableHeader>
-                            <TableHeader>Additional Field</TableHeader>
-                            <TableHeader>Resource Number</TableHeader>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        {filteredUsers.map(user => {
-                            const isHighlighted = updatedUserIds.includes(user.id);
-                            const RowComponent = isHighlighted ? HighlightedRow : TableRow;
-                            return (
-                                <RowComponent key={user.id}>
-                                    {Object.keys(user).map(key => (
-                                        <TableCell key={key} isHighlighted={changedCells[user.id]?.includes(key)}>{user[key]}</TableCell>
-                                    ))}
-                                </RowComponent>
-                            );
-                        })}
-                        </tbody>
-                    </Table>
+                    <div className="ag-theme-quartz" style={{ height: 500 }}>
+                        <AgGridReact
+                            rowData={rowDataWorkgroup}
+                            columnDefs={colDefsWorkgroup}
+                            pagination={true}
+                            paginationPageSize={10}
+                            paginationPageSizeSelector={[10,20,50,100]}
+                            defaultColDef={defaultColDefWorkgroup}
+                            gridOptions={gridOptionsWorkgroup}
+                            ref={gridRef}
+                            onGridReady={onGridReady}
+                        />
+                    </div>
                 </TableContainer>
                 <AgentsContainer>
                     <Title>Agents Status</Title>
@@ -326,30 +337,16 @@ const Dashboard = () => {
                             </StatusIconWrapper>
                         </StatusIcons>
                     </StatusBar>
-                    <Table>
-                        <thead>
-                        <tr>
-                            <TableHeader>Workgroup</TableHeader>
-                            <TableHeader>Longest Interaction Waiting</TableHeader>
-                            <TableHeader>Agents Available</TableHeader>
-                            <TableHeader>Interactions Waiting</TableHeader>
-                            <TableHeader>Service Level Target</TableHeader>
-                            <TableHeader>Interactions Abandoned</TableHeader>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        {filteredAgents.map((agent, index) => (
-                            <TableRow key={index}>
-                                <TableCell>{agent.workgroup}</TableCell>
-                                <TableCell>{agent.longest_time_waiting || 'N/A'}</TableCell>
-                                <TableCell>{agent.agents_available}</TableCell>
-                                <TableCell>{agent.interactions_waiting}</TableCell>
-                                <TableCell>{agent.current_shift_service_level_target || 'N/A'} %</TableCell>
-                                <TableCell>{agent.interactions_abandoned || 0}</TableCell>
-                            </TableRow>
-                        ))}
-                        </tbody>
-                    </Table>
+                    <div className="ag-theme-quartz" style={{ height: 500 }}>
+                        <AgGridReact
+                            rowData={rowDataAgents}
+                            columnDefs={colDefsAgents}
+                            pagination={true}
+                            paginationPageSize={10}
+                            paginationPageSizeSelector={[10,20,50,100]}
+                            defaultColDef={defaultColDefAgents}
+                        />
+                    </div>
                 </AgentsContainer>
             </DashboardContainer>
         </>
